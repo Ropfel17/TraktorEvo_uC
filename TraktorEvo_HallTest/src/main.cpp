@@ -1,13 +1,13 @@
 #include <Arduino.h>
 const int HALL_PIN = 2;
-const float d_wheel = 0.35;
-const float res_hall_perturn = 3;
+const double d_wheel = 0.35;
+const double res_hall_perturn = 3;
 
-float wheel_circ_res = 0;
+double wheel_circ_res = 0;
 
 //volatile bool HallStatus = false;
 volatile int hall_time_old = 0;
-volatile float speed = 0; // in km/h
+volatile double speed = 0; // in km/h
 
 // put function declarations here:
 void HallTriggered();
@@ -15,7 +15,7 @@ void HallTriggered();
 void setup() {
   // put your setup code here, to run once:
   pinMode(HALL_PIN, INPUT);
-  attachInterrupt(0, HallTriggered ,FALLING);
+  attachInterrupt(digitalPinToInterrupt(HALL_PIN), HallTriggered ,FALLING);
   Serial.begin(9600);
 
   wheel_circ_res = PI*d_wheel*1/res_hall_perturn; // calculate length of wheel circumference over resolution of hall sensor

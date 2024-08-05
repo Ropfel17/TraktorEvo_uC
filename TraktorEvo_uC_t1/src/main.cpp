@@ -1,36 +1,79 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include "RoboClaw.h"
 #include <SoftwareSerial.h>
 
+// SOFTWARE DEFINES
 #define UPPER_ADC_LIMIT 810.0
 #define LOWER_ADC_LIMIT 240.0
+#define ROBOCLAW_ADDR 0x80   // see value in studio
+const double d_wheel = 0.35;
+const double res_hall_perturn = 3;
 
-LiquidCrystal_I2C lcd(0x38,16,2);
+// HARDWARE DEFINES
+#define FORW_BACK_SWITCH_PIN    6
+#define HALL_PIN                2
+#define GAS_PIN                 A0
+
+// GLOBAL VARIABLES
 int adc_value = 0;
 uint8_t pwm_value = 0;
 uint8_t speed_value = 0;
 uint8_t dir_speed_value = 0;
 bool forward = false;
-bool backward = false;
+double wheel_circ_res = 0;
+volatile int hall_time_old = 0;
+volatile double speed = 0; // in km/h
 
-#define address 0x80   // see value in studio
-
-//See limitations of Arduino SoftwareSerial
-SoftwareSerial serial(10,11);	// rxPin, txPin
+SoftwareSerial serial(11, 10);	// rxPin, txPin
 RoboClaw roboclaw(&serial,10000);   // serial pins, timeout
 
-void setup() {
-    lcd.init();                 // initialize the lcd 
-    lcd.backlight();
+// FUNCTION DECLARATIONS
+void HallTriggered();
+void adcToSpeed(void);
 
+
+void setup() {
     // Set Pins for Drive Switch
-    pinMode(PIN7, INPUT);
-    pinMode(PIN6, INPUT);
+    pinMode(FORW_BACK_SWITCH_PIN, INPUT);
+    pinMode(HALL_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(HALL_PIN), HallTriggered ,FALLING);
+    Serial.begin(9600);
+
+    wheel_circ_res = PI*d_wheel*1/res_hall_perturn; // calculate length of wheel circumference over resolution of hall sensor
 
     //Open roboclaw serial ports
     roboclaw.begin(38400);
+}
+
+void loop() {
+    adcToSpeed();
+
+    adc_value = analogRead(GAS_PIN);
+
+    uint16_t roboclaw_logic_bat_v;
+    roboclaw_logic_bat_v = roboclaw.ReadLogicBatteryVoltage(ROBOCLAW_ADDR);
+
+
+    uint16_t roboclaw_main_bat_v;
+    roboclaw_main_bat_v = roboclaw.ReadMainBatteryVoltage(ROBOCLAW_ADDR);
+
+    Serial.println(roboclaw_logic_bat_v);
+
+    if(forward){
+        roboclaw.ForwardM1(ROBOCLAW_ADDR, dir_speed_value);
+        roboclaw.ForwardM2(ROBOCLAW_ADDR, dir_speed_value);
+    }else{
+        roboclaw.BackwardM1(ROBOCLAW_ADDR,dir_speed_value);
+        roboclaw.BackwardM2(ROBOCLAW_ADDR,dir_speed_value);
+    }
+
+    if(digitalRead(PIN6) == HIGH){
+        forward = true;
+    }
+    else{
+        forward = false;
+    }
 }
 
 void adcToSpeed(void){
@@ -43,77 +86,21 @@ void adcToSpeed(void){
         speed_value = (uint8_t) buf;
     }
 
-    if(forward){
-        dir_speed_value = speed_value;
-    }else if(backward){
+    if(!forward){
         dir_speed_value = speed_value/2;
+        //Serial.println("backwards");
     }else{
-        speed_value= 0;
+        dir_speed_value = speed_value;
+        //Serial.println("forward");    
     }
+
+    //Serial.println(dir_speed_value);
 }
 
-void loop() {
-    adcToSpeed();
-
-    lcd.setCursor(0,0);
-    lcd.print("ADC:");
-
-    adc_value = analogRead(A0);
- 
-    lcd.setCursor(4, 0);
-    lcd.print(adc_value,DEC);
-
-    uint16_t roboclaw_logic_bat_v;
-    roboclaw_logic_bat_v = roboclaw.ReadLogicBatteryVoltage(address);
-    lcd.setCursor(8, 0);
-    lcd.print("LB:");
-    lcd.setCursor(11, 0);
-    lcd.print(roboclaw_logic_bat_v,DEC);
-
-    uint16_t roboclaw_main_bat_v;
-    roboclaw_main_bat_v = roboclaw.ReadMainBatteryVoltage(address);
-    lcd.setCursor(8, 1);
-    lcd.print("MB:");
-    lcd.setCursor(11, 1);
-    lcd.print(roboclaw_main_bat_v,DEC);
-
-    lcd.setCursor(0, 1);
-    lcd.print("DSV:");
-    lcd.setCursor(4, 1);
-    lcd.print("   ");
-    lcd.setCursor(4, 1);
-    lcd.print(dir_speed_value,DEC);
-
-    if(forward){
-        roboclaw.ForwardM1(address, dir_speed_value);
-        roboclaw.ForwardM2(address, dir_speed_value);
-    }else if(backward){
-        roboclaw.BackwardM1(address,dir_speed_value);
-        roboclaw.BackwardM2(address,dir_speed_value);
-    }
-
-    if(digitalRead(PIN6)== HIGH && digitalRead(PIN7)== HIGH){
-        lcd.setCursor(14,0);
-        lcd.print("E=");
-        forward = false;
-        backward = false;
-    }
-    else if(digitalRead(PIN6)==HIGH){
-        lcd.setCursor(14,0);
-        lcd.print("F>");
-        forward = true;
-        backward = false;
-    }
-    else if (digitalRead(PIN7)==HIGH){
-        lcd.setCursor(14,0);
-        lcd.print("B<");
-        forward = false;
-        backward = true;
-    }
-    else{
-        lcd.setCursor(14,0);
-        lcd.print("--");
-        forward = false;
-        backward = false;
-    }
+void HallTriggered(){
+  int time_new = millis();  // get millis since program start
+  int time_diff = time_new - hall_time_old; // calculate time diff to last trigger
+  hall_time_old = time_new; // store new timestamp as last trigger
+  speed = wheel_circ_res*3.6*1000/time_diff;  // calculate speed in km/h
+  Serial.println(speed);
 }
