@@ -7,7 +7,7 @@ double wheel_circ_res = 0;
 
 //volatile bool HallStatus = false;
 volatile int hall_time_old = 0;
-volatile double speed = 0; // in km/h
+volatile double measured_speed = 0; // in km/h
 
 // put function declarations here:
 void HallTriggered();
@@ -30,8 +30,8 @@ void HallTriggered(){
   int time_new = millis();  // get millis since program start
   int time_diff = time_new - hall_time_old; // calculate time diff to last trigger
   hall_time_old = time_new; // store new timestamp as last trigger
-  speed = wheel_circ_res*3.6*1000/time_diff;  // calculate speed in km/h
-  Serial.println(speed);
+  measured_speed = wheel_circ_res*3.6*1000/time_diff;  // calculate speed in km/h
+  Serial.println(measured_speed);
 
   /*
   if(HallStatus == true){

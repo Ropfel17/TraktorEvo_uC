@@ -7,11 +7,14 @@
 #define UPPER_ADC_LIMIT 810.0
 #define LOWER_ADC_LIMIT 240.0
 #define ROBOCLAW_ADDR 0x80   // see value in studio
+const int FORW_BACK_SWITCH_DELAY = 1000;
+const uint8_t LOCK_MAX_FORW_SPEED = 100;
+const uint8_t LOCK_MAX_BACK_SPEED = 70;
 const double d_wheel = 0.35;
 const double res_hall_perturn = 3;
 
 // HARDWARE DEFINES
-#define FORW_BACK_SWITCH_PIN    6
+#define FORW_BACK_SWITCH_PIN    7
 #define HALL_PIN                2
 #define GAS_PIN                 A0
 
@@ -20,17 +23,20 @@ int adc_value = 0;
 uint8_t pwm_value = 0;
 uint8_t speed_value = 0;
 uint8_t dir_speed_value = 0;
-bool forward = false;
+bool forward = true;
 double wheel_circ_res = 0;
 volatile int hall_time_old = 0;
-volatile double speed = 0; // in km/h
+volatile double measured_speed = 0; // in km/h
+bool speed_locked = false;
 
 SoftwareSerial serial(11, 10);	// rxPin, txPin
 RoboClaw roboclaw(&serial,10000);   // serial pins, timeout
 
 // FUNCTION DECLARATIONS
 void HallTriggered();
-void adcToSpeed(void);
+void AdcToSpeed(void);
+void SendSpeedToRoboClaw(void);
+void SendMeasuredSpeedToRP(void);
 
 
 void setup() {
@@ -47,36 +53,25 @@ void setup() {
 }
 
 void loop() {
-    adcToSpeed();
-
     adc_value = analogRead(GAS_PIN);
+    AdcToSpeed();
 
-    uint16_t roboclaw_logic_bat_v;
-    roboclaw_logic_bat_v = roboclaw.ReadLogicBatteryVoltage(ROBOCLAW_ADDR);
-
-
-    uint16_t roboclaw_main_bat_v;
-    roboclaw_main_bat_v = roboclaw.ReadMainBatteryVoltage(ROBOCLAW_ADDR);
-
-    Serial.println(roboclaw_logic_bat_v);
-
-    if(forward){
-        roboclaw.ForwardM1(ROBOCLAW_ADDR, dir_speed_value);
-        roboclaw.ForwardM2(ROBOCLAW_ADDR, dir_speed_value);
-    }else{
-        roboclaw.BackwardM1(ROBOCLAW_ADDR,dir_speed_value);
-        roboclaw.BackwardM2(ROBOCLAW_ADDR,dir_speed_value);
+    // set measured speed to 0, if no interrupt by hall sensor since long time
+    int tim = millis();  // get millis since program start
+    if((tim - hall_time_old) > FORW_BACK_SWITCH_DELAY){
+        measured_speed = 0;
     }
 
-    if(digitalRead(PIN6) == HIGH){
-        forward = true;
+    // allow direction change only while standing // no input on gas pedal
+    if(speed_value == 0 && measured_speed == 0){
+        forward = digitalRead(FORW_BACK_SWITCH_PIN);
     }
-    else{
-        forward = false;
-    }
+
+    SendSpeedToRoboClaw();
+    SendMeasuredSpeedToRP();
 }
 
-void adcToSpeed(void){
+void AdcToSpeed(void){
     if(adc_value >= UPPER_ADC_LIMIT){
         speed_value = 255;
     }else if(adc_value <= LOWER_ADC_LIMIT){
@@ -88,19 +83,40 @@ void adcToSpeed(void){
 
     if(!forward){
         dir_speed_value = speed_value/2;
-        //Serial.println("backwards");
     }else{
-        dir_speed_value = speed_value;
-        //Serial.println("forward");    
+        dir_speed_value = speed_value;  
     }
-
-    //Serial.println(dir_speed_value);
 }
 
 void HallTriggered(){
   int time_new = millis();  // get millis since program start
   int time_diff = time_new - hall_time_old; // calculate time diff to last trigger
   hall_time_old = time_new; // store new timestamp as last trigger
-  speed = wheel_circ_res*3.6*1000/time_diff;  // calculate speed in km/h
-  Serial.println(speed);
+  measured_speed = wheel_circ_res*3.6*1000/time_diff;  // calculate speed in km/h
+}
+
+void SendSpeedToRoboClaw(void){
+    // send current speed target value to roboclaw
+    if(forward){
+        // if not authorized by RP, speed value is limited
+        if(speed_locked && (dir_speed_value >= LOCK_MAX_FORW_SPEED)){
+            dir_speed_value = LOCK_MAX_FORW_SPEED;
+        }
+        roboclaw.ForwardM1(ROBOCLAW_ADDR, dir_speed_value);
+        roboclaw.ForwardM2(ROBOCLAW_ADDR, dir_speed_value);
+    }else{
+        // if not authorized by RP, speed value is limited
+        if(speed_locked && (dir_speed_value >= LOCK_MAX_BACK_SPEED)){
+            dir_speed_value = LOCK_MAX_BACK_SPEED;
+        }
+        roboclaw.BackwardM1(ROBOCLAW_ADDR,dir_speed_value);
+        roboclaw.BackwardM2(ROBOCLAW_ADDR,dir_speed_value);
+    }
+}
+
+void SendMeasuredSpeedToRP(void){
+    int rounded_speed = (int) measured_speed;
+    char message[10];
+    snprintf(message, sizeof(message), ">S%03d-%01d", rounded_speed, forward);
+    Serial.print(message);
 }
