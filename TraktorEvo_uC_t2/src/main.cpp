@@ -32,7 +32,7 @@ void loop() {
   // put your main code here, to run repeatedly:
 
       // allow direction change only while standing // no input on gas pedal
-    if(speed_value == 0){
+    if(actual_speed == 0){
         forward = digitalRead(FORW_BACK_SWITCH_PIN);
     }
 
@@ -40,11 +40,11 @@ void loop() {
   AdcToSpeed();
 
   if(forward){
-    analogWrite(LPWM_PIN, 0);
-    analogWrite(RPWM_PIN, actual_speed);
-  }else{
     analogWrite(RPWM_PIN, 0);
     analogWrite(LPWM_PIN, actual_speed);
+  }else{
+    analogWrite(LPWM_PIN, 0);
+    analogWrite(RPWM_PIN, actual_speed);
   }
 }
 
