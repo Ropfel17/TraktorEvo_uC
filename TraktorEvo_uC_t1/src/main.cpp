@@ -7,7 +7,7 @@
 #define UPPER_ADC_LIMIT 810.0
 #define LOWER_ADC_LIMIT 240.0
 #define ROBOCLAW_ADDR 0x80   // see value in studio
-const int FORW_BACK_SWITCH_DELAY = 1000;
+const int SPEED_0_DELAY = 1000;
 const uint8_t LOCK_MAX_FORW_SPEED = 100;
 const uint8_t LOCK_MAX_BACK_SPEED = 70;
 const double d_wheel = 0.35;
@@ -41,7 +41,7 @@ void SendMeasuredSpeedToRP(void);
 
 void setup() {
     // Set Pins for Drive Switch
-    pinMode(FORW_BACK_SWITCH_PIN, INPUT);
+    pinMode(F_R_SWITCH_PIN, INPUT);
     pinMode(HALL_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(HALL_PIN), HallTriggered ,FALLING);
     Serial.begin(9600);
@@ -58,13 +58,13 @@ void loop() {
 
     // set measured speed to 0, if no interrupt by hall sensor since long time
     int tim = millis();  // get millis since program start
-    if((tim - hall_time_old) > FORW_BACK_SWITCH_DELAY){
+    if((tim - hall_time_old) > SPEED_0_DELAY){
         measured_speed = 0;
     }
 
     // allow direction change only while standing // no input on gas pedal
     if(speed_value == 0 && measured_speed == 0){
-        forward = digitalRead(FORW_BACK_SWITCH_PIN);
+        forward = digitalRead(F_R_SWITCH_PIN);
     }
 
     SendSpeedToRoboClaw();
