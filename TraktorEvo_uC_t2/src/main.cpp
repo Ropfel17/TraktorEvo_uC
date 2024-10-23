@@ -11,7 +11,7 @@
 // SOFTWARE DEFINES
 #define UPPER_ADC_LIMIT 810.0   // Everything over this value will be treated as full speed
 #define LOWER_ADC_LIMIT 240.0   // Everything under this value will be treated as no input
-#define SPEED_GRADIENT 40       // Higher number => slower acceleration and decelaration 
+#define SPEED_GRADIENT 60       // Higher number => slower acceleration and decelaration 
   // safe mode:
 #define SAFE_MODE_REVERSE_MAX 50  // max pwm outputs in safe mode
 #define SAFE_MODE_FORWARD_MAX 120 // do not use values over 126!
@@ -142,7 +142,10 @@ uint8_t AdcToSpeed(int adc_value){
   // slow down the acceleration curve in a non blocking way
   if(enter_count > SPEED_GRADIENT){ 
     if(input_speed_value < pwm_output){
-      pwm_output--;
+      pwm_output = pwm_output-2;
+      if(pwm_output < 10){
+        pwm_output = 0;
+      }
     }else if(input_speed_value > pwm_output){
       pwm_output++;
     }
